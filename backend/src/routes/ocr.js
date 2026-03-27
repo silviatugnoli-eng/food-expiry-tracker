@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.js'
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } })
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+console.log("API Key:", process.env.GEMINI_API_KEY ? "Caricata ✅" : "MANCANTE ❌")
 
 const MODELS = ['gemini-1.5-flash-8b', 'gemini-1.5-flash', 'gemini-2.0-flash']
 
