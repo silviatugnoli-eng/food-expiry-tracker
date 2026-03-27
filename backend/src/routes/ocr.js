@@ -1,22 +1,30 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "MANCANTE");
 
 async function scanWithRetry(imageData) {
-  // LOG DI DEBUG PER VEDERE SE LA CHIAVE È CARICATA
-  const key = process.env.GEMINI_API_KEY || "";
-  console.log(`Debug: La chiave inizia con ${key.substring(0, 4)}...`);
-
+  console.log("--- TEST DI CONNESSIONE ---");
+  console.log("Chiave presente:", !!process.env.GEMINI_API_KEY);
+  
   try {
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const prompt = "Analizza l'immagine e restituisci JSON: productName, expiryDate";
+
     const result = await model.generateContent([
-      "Rispondi OK",
+      prompt,
       { inlineData: { data: imageData, mimeType: "image/jpeg" } }
     ]);
-    return result.response.text();
+
+    const text = result.response.text();
+    console.log("Risposta ottenuta con successo!");
+    return text;
   } catch (error) {
-    console.error("Errore reale da Google:", error.message);
-    throw new Error("MODELLO_NON_SUPPORTATO");
+    console.error("DETTAGLIO ERRORE GOOGLE:", error.message);
+    // Se l'errore è la regione, lo vedremo qui sotto:
+    if (error.message.includes("location")) {
+       return JSON.stringify({ productName: "ERRORE: REGIONE NON SUPPORTATA", expiryDate: null });
+    }
+    throw error;
   }
 }
 
