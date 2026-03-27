@@ -1,68 +1,48 @@
-import express from 'express'
-import multer from 'multer'
-import { GoogleGenerativeAI } from '@google/generative-ai'
-import { requireAuth } from '../middleware/auth.js'
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const router = express.Router()
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } })
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Ordiniamo i modelli dal più leggero/probabile al più avanzato
-const MODELS = ['gemini-1.5-flash', 'gemini-2.0-flash']
+// NOMI MODELLI AGGIORNATI PER V1BETA
+const MODELS = ['gemini-1.5-flash-latest', 'gemini-1.5-flash-8b', 'gemini-2.0-flash-exp'];
 
-async function scanWithRetry(imageData, prompt, attempt = 0) {
-    const modelName = MODELS[attempt % MODELS.length];
+async function scanWithRetry(imageData, modelIndex = 0) {
+  const modelName = MODELS[modelIndex];
+  
+  try {
+    console.log(`Tentativo ${modelIndex + 1}: Provo con modello ${modelName}`);
+    const model = genAI.getGenerativeModel({ model: modelName });
     
-    try {
-        console.log(`Tentativo ${attempt + 1}: Provo con modello ${modelName}`);
-        const model = genAI.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent([prompt, imageData]);
-        return result;
+    const prompt = "Analizza l'immagine di questo prodotto alimentare. Estrai SOLAMENTE il nome del prodotto e la data di scadenza (se presente). Rispondi esclusivamente in formato JSON come questo: {\"productName\": \"nome\", \"expiryDate\": \"AAAA-MM-DD\"}. Se la data non c'è, scrivi null.";
 
-    } catch (error) {
-        // Se l'errore è "Too Many Requests" (429)
-        if (error.status === 429 && attempt < 3) {
-            // Estraiamo il tempo di attesa o usiamo 35 secondi di default
-            const waitTime = error.errorDetails?.[0]?.retryDelay 
-                             ? (parseInt(error.errorDetails[0].retryDelay) + 2) * 1000 
-                             : 35000;
-
-            console.warn(`Quota superata su ${modelName}. Attendo ${waitTime/1000}s prima di riprovare...`);
-            
-            // ASPETTAZIONE FORZATA
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            
-            // RIPROVA (Ricorsione)
-            return scanWithRetry(imageData, prompt, attempt + 1);
+    const result = await model.generateContent([
+      prompt,
+      {
+        inlineData: {
+          data: imageData,
+          mimeType: "image/jpeg"
         }
-        
-        // Se l'errore è diverso o abbiamo finito i tentativi
-        console.error(`Errore definitivo con ${modelName}:`, error.message);
-        throw error;
+      }
+    ]);
+
+    const response = await result.response;
+    return response.text();
+
+  } catch (error) {
+    console.error(`Errore con ${modelName}:`, error.message);
+
+    if (error.message.includes("429") || error.message.includes("Quota")) {
+      console.log("Quota superata. Attendo 35 secondi...");
+      await new Promise(resolve => setTimeout(resolve, 35000));
+      return scanWithRetry(imageData, modelIndex);
     }
+
+    if (modelIndex < MODELS.length - 1) {
+      console.log("Passo al modello successivo...");
+      return scanWithRetry(imageData, modelIndex + 1);
+    }
+
+    throw new Error("Tutti i modelli hanno fallito o quota esaurita.");
+  }
 }
 
-// Rotta OCR
-router.post('/scan', requireAuth, upload.single('image'), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).json({ error: 'Nessuna immagine caricata' });
-
-        const imageData = {
-            inlineData: {
-                data: req.file.buffer.toString('base64'),
-                mimeType: req.file.mimetype
-            }
-        };
-
-        const prompt = "Analizza questa etichetta. Estrai nome prodotto e data di scadenza (YYYY-MM-DD). Rispondi solo in JSON.";
-        
-        const result = await scanWithRetry(imageData, prompt);
-        const text = result.response.text();
-        
-        res.json({ result: text });
-    } catch (error) {
-        res.status(500).json({ error: 'Errore durante la scansione OCR', details: error.message });
-    }
-});
-
-export default router;
+export default scanWithRetry;
