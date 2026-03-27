@@ -4,23 +4,33 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function scanWithRetry(imageData) {
   try {
-    console.log("--- PULIZIA DATI E INVIO A GOOGLE ---");
+    console.log("--- FASE: ESTRAZIONE E PULIZIA ---");
     
-    // Rimuoviamo eventuali intestazioni data:image/jpeg;base64, se presenti
-    const cleanBase64 = imageData.includes(",") ? imageData.split(",")[1] : imageData;
+    // Se imageData è un oggetto, cerchiamo la proprietà che contiene la stringa
+    let base64String = typeof imageData === 'string' ? imageData : (imageData.image || imageData.data || "");
+
+    if (!base64String) {
+      throw new Error("Dati immagine non trovati o formato non valido");
+    }
+
+    // Pulizia del prefisso Base64
+    const cleanBase64 = base64String.includes(",") ? base64String.split(",")[1] : base64String;
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     const result = await model.generateContent([
-      "Estrai nome prodotto e scadenza. Rispondi SOLO con un oggetto JSON: {\"productName\": \"...\", \"expiryDate\": \"AAAA-MM-DD\"}",
+      "Analizza l'immagine e restituisci SOLO un oggetto JSON con: productName (nome prodotto) e expiryDate (scadenza nel formato AAAA-MM-DD).",
       { inlineData: { data: cleanBase64, mimeType: "image/jpeg" } }
     ]);
 
     const response = await result.response;
-    return response.text();
+    const text = response.text();
+    console.log("Risposta Ricevuta da Google!");
+    return text;
+
   } catch (error) {
-    console.error("ERRORE DURANTE L'INVIO A GOOGLE:", error.message);
-    throw new Error("Errore elaborazione immagine");
+    console.error("ERRORE CRITICO:", error.message);
+    throw new Error("Analisi fallita: " + error.message);
   }
 }
 
