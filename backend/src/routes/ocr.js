@@ -3,7 +3,6 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function scanWithRetry(imageData) {
-  // Usiamo direttamente il modello corretto senza complicazioni
   const modelName = "gemini-1.5-flash-latest";
   
   try {
@@ -26,16 +25,17 @@ async function scanWithRetry(imageData) {
     return response.text();
 
   } catch (error) {
-    console.error(`Errore durante la scansione:`, error.message);
+    // MODIFICA QUI: Estraiamo solo il messaggio per evitare l'errore 'circular structure'
+    const errorMessage = error.message || "Errore sconosciuto";
+    console.error(`Errore durante la scansione:`, errorMessage);
 
-    // Se è un errore di quota, aspettiamo e riproviamo UNA volta
-    if (error.message.includes("429") || error.message.includes("Quota")) {
+    if (errorMessage.includes("429") || errorMessage.includes("Quota")) {
       console.log("Quota superata. Attendo 35 secondi...");
       await new Promise(resolve => setTimeout(resolve, 35000));
       return scanWithRetry(imageData);
     }
 
-    throw new Error("Errore durante l'analisi dell'immagine: " + error.message);
+    throw new Error("Errore durante l'analisi: " + errorMessage);
   }
 }
 
