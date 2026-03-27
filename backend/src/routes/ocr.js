@@ -4,33 +4,46 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 async function scanWithRetry(imageData) {
   try {
-    console.log("--- FASE: ESTRAZIONE E PULIZIA ---");
+    console.log("--- ISPEZIONE DATI RICEVUTI ---");
     
-    // Se imageData è un oggetto, cerchiamo la proprietà che contiene la stringa
-    let base64String = typeof imageData === 'string' ? imageData : (imageData.image || imageData.data || "");
-
-    if (!base64String) {
-      throw new Error("Dati immagine non trovati o formato non valido");
+    // Vediamo cosa c'è dentro imageData
+    if (imageData && typeof imageData === 'object') {
+        console.log("Chiavi trovate nell'oggetto:", Object.keys(imageData));
     }
 
-    // Pulizia del prefisso Base64
+    // Cerchiamo la stringa base64 in tutti i posti probabili
+    let base64String = "";
+    if (typeof imageData === 'string') {
+        base64String = imageData;
+    } else if (imageData.image) {
+        base64String = imageData.image;
+    } else if (imageData.imageData) {
+        base64String = imageData.imageData;
+    } else if (imageData.data) {
+        base64String = imageData.data;
+    }
+
+    if (!base64String || base64String.length < 100) {
+      console.error("Dati insufficienti. Lunghezza stringa:", base64String?.length);
+      throw new Error("Formato immagine non valido o stringa troppo corta");
+    }
+
     const cleanBase64 = base64String.includes(",") ? base64String.split(",")[1] : base64String;
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     const result = await model.generateContent([
-      "Analizza l'immagine e restituisci SOLO un oggetto JSON con: productName (nome prodotto) e expiryDate (scadenza nel formato AAAA-MM-DD).",
+      "Analizza l'immagine e restituisci SOLO JSON: productName, expiryDate (AAAA-MM-DD)",
       { inlineData: { data: cleanBase64, mimeType: "image/jpeg" } }
     ]);
 
-    const response = await result.response;
-    const text = response.text();
-    console.log("Risposta Ricevuta da Google!");
+    const text = result.response.text();
+    console.log("SUCCESSO: Google ha risposto!");
     return text;
 
   } catch (error) {
-    console.error("ERRORE CRITICO:", error.message);
-    throw new Error("Analisi fallita: " + error.message);
+    console.error("ERRORE DETTAGLIATO:", error.message);
+    throw error;
   }
 }
 
