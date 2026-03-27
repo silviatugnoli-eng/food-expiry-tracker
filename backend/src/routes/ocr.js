@@ -2,47 +2,36 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-async function scanWithRetry(imageData) {
+async function scanWithRetry(input) {
   try {
-    console.log("--- ISPEZIONE DATI RICEVUTI ---");
+    console.log("--- ISPEZIONE PROFONDA ---");
     
-    // Vediamo cosa c'è dentro imageData
-    if (imageData && typeof imageData === 'object') {
-        console.log("Chiavi trovate nell'oggetto:", Object.keys(imageData));
+    // Se l'input è vuoto, cerchiamo di capire perché
+    if (!input || Object.keys(input).length === 0) {
+      console.error("ERRORE: L'input ricevuto è VUOTO. Controllare il frontend.");
+      throw new Error("Nessun dato ricevuto dal frontend");
     }
 
-    // Cerchiamo la stringa base64 in tutti i posti probabili
-    let base64String = "";
-    if (typeof imageData === 'string') {
-        base64String = imageData;
-    } else if (imageData.image) {
-        base64String = imageData.image;
-    } else if (imageData.imageData) {
-        base64String = imageData.imageData;
-    } else if (imageData.data) {
-        base64String = imageData.data;
-    }
+    // Estraiamo la stringa base64 da qualsiasi proprietà possibile
+    const base64String = input.image || input.imageData || input.data || (typeof input === 'string' ? input : "");
 
     if (!base64String || base64String.length < 100) {
-      console.error("Dati insufficienti. Lunghezza stringa:", base64String?.length);
-      throw new Error("Formato immagine non valido o stringa troppo corta");
+      throw new Error("Stringa immagine mancante o troppo corta");
     }
 
     const cleanBase64 = base64String.includes(",") ? base64String.split(",")[1] : base64String;
 
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-    
     const result = await model.generateContent([
       "Analizza l'immagine e restituisci SOLO JSON: productName, expiryDate (AAAA-MM-DD)",
       { inlineData: { data: cleanBase64, mimeType: "image/jpeg" } }
     ]);
 
-    const text = result.response.text();
-    console.log("SUCCESSO: Google ha risposto!");
-    return text;
+    console.log("SUCCESSO: Risposta ottenuta!");
+    return result.response.text();
 
   } catch (error) {
-    console.error("ERRORE DETTAGLIATO:", error.message);
+    console.error("ERRORE OCR:", error.message);
     throw error;
   }
 }
