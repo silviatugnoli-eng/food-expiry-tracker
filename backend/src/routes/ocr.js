@@ -7,26 +7,30 @@ const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 * 1024 * 1024 } })
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 
-async function scanWithRetry(model, content, retries = 3) {
-  for (let i = 0; i < retries; i++) {
+const MODELS = ['gemini-1.5-flash-8b', 'gemini-1.5-flash', 'gemini-2.0-flash']
+
+async function scanWithRetry(imageData, prompt) {
+  for (const modelName of MODELS) {
     try {
-      return await model.generateContent(content)
+      console.log(`Provo con modello: ${modelName}`)
+      const model = genAI.getGenerativeModel({ model: modelName })
+      const result = await model.generateContent([prompt, imageData])
+      return result
     } catch (err) {
-      if (err.status === 429 && i < retries - 1) {
-        const wait = (i + 1) * 10000
-        console.log(`Rate limit, riprovo tra ${wait/1000}s...`)
-        await new Promise(r => setTimeout(r, wait))
+      if (err.status === 429) {
+        console.log(`${modelName} quota esaurita, aspetto 35s e provo il prossimo...`)
+        await new Promise(r => setTimeout(r, 35000))
       } else {
         throw err
       }
     }
   }
+  throw new Error('Tutti i modelli hanno la quota esaurita')
 }
 
 router.post('/scan', requireAuth, upload.single('image'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'Nessuna immagine ricevuta' })
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
     const imageData = {
       inlineData: {
         data: req.file.buffer.toString('base64'),
@@ -43,7 +47,7 @@ Rispondi SOLO con un JSON nel formato:
   "product_hint": "tipo di prodotto se visibile (opzionale)"
 }
 Se non trovi nessuna data, rispondi con found: false e date: null.`
-    const result = await scanWithRetry(model, [prompt, imageData])
+    const result = await scanWithRetry(imageData, prompt)
     const text = result.response.text().trim()
     const cleaned = text.replace(/```json\n?|\n?```/g, '').trim()
     const parsed = JSON.parse(cleaned)
