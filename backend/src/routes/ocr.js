@@ -8,7 +8,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 4 *
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
 console.log("API Key:", process.env.GEMINI_API_KEY ? "Caricata ✅" : "MANCANTE ❌")
 
-const MODELS = ['gemini-1.5-flash-8b', 'gemini-1.5-flash', 'gemini-2.0-flash']
+const MODELS = ['gemini-1.5-flash', 'gemini-2.0-flash-lite', 'gemini-2.0-flash']
 
 async function scanWithRetry(imageData, prompt) {
   for (const modelName of MODELS) {
@@ -18,7 +18,7 @@ async function scanWithRetry(imageData, prompt) {
       const result = await model.generateContent([prompt, imageData])
       return result
     } catch (err) {
-      if (err.status === 429) {
+      if (err.status === 429 || err.status === 404) {
         console.log(`${modelName} quota esaurita, aspetto 35s e provo il prossimo...`)
         await new Promise(r => setTimeout(r, 35000))
       } else {
