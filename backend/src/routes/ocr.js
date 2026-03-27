@@ -25,17 +25,17 @@ async function scanWithRetry(imageData) {
     return response.text();
 
   } catch (error) {
-    // MODIFICA QUI: Estraiamo solo il messaggio per evitare l'errore 'circular structure'
-    const errorMessage = error.message || "Errore sconosciuto";
-    console.error(`Errore durante la scansione:`, errorMessage);
+    // TRATTAMENTO D'URTO: Non stampiamo MAI l'oggetto error direttamente
+    const msg = error.message ? String(error.message) : "Errore sconosciuto";
+    console.error("Errore rilevato durante la scansione:", msg);
 
-    if (errorMessage.includes("429") || errorMessage.includes("Quota")) {
+    if (msg.includes("429") || msg.includes("Quota")) {
       console.log("Quota superata. Attendo 35 secondi...");
       await new Promise(resolve => setTimeout(resolve, 35000));
       return scanWithRetry(imageData);
     }
 
-    throw new Error("Errore durante l'analisi: " + errorMessage);
+    throw new Error("Analisi fallita: " + msg);
   }
 }
 
